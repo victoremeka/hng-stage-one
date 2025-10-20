@@ -1,0 +1,1 @@
+# stage one: string analyser service
