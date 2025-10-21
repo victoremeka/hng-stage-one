@@ -1,6 +1,6 @@
 from datetime import datetime, timezone
 import re
-from fastapi import FastAPI
+from fastapi import FastAPI, Response
 from fastapi.responses import JSONResponse
 import hashlib
 import uuid
@@ -43,7 +43,7 @@ def analyze_string(payload: dict):
             character_frequency_map[k] = character_frequency_map.get(k, 0) + 1
 
         content = {
-            "id": uuid.uuid4(),
+            "id": uuid.uuid4().int,
             "value": input_string,
             "properties": {
                 "length": string_length,
@@ -80,20 +80,18 @@ def get_all_strings(
     contains_character: str | None = None):
     if None in (is_palindrome, min_length, max_length, word_count, contains_character):
         return JSONResponse(
-                content={
-                    "message": "Invalid query parameter values or types",
-                },
-                status_code=400,
-            )
+            content={
+                "message": "Invalid query parameter values or types",
+            },
+            status_code=400,
+        )
 
-    
     filtered_strings = []
-
     for x in strings:
-        string_properties = x["properties"]
+        string_properties = strings[x]["properties"]
         s_ispalindrome = string_properties["is_palindrome"] == is_palindrome
-        s_isminlength = string_properties["min_length"] >= min_length
-        s_ismaxlength = string_properties["max_length"] <= max_length
+        s_isminlength = string_properties["length"] >= min_length
+        s_ismaxlength = string_properties["length"] <= max_length
         s_wordcount = string_properties["word_count"] == word_count
         s_containschar = contains_character in string_properties["character_frequency_map"]
 
@@ -118,63 +116,42 @@ def get_all_strings(
 
 
 
-@app.get("/strings/{string_value}")
-def get_string(string_value):
-    if string_value not in strings:
-        return JSONResponse(
-            content={"message": "String does not exist in the system"},
-            status_code=404
-        )
-    
-    return JSONResponse(
-        content=strings[string_value]
-    )
-    
-
-
-
 @app.get("/strings/filter-by-natural-language")
 def get_all_strings_by_nlp(query: str):
     try:
         parsed_filters = {}
         query_lower = query.lower()
-        
-        # Detect palindrome keywords
+
         if "palindrom" in query_lower:
+            print("aaa")
             parsed_filters["is_palindrome"] = True
         
-        # Detect word count
         if "single word" in query_lower:
             parsed_filters["word_count"] = 1
         elif match := re.search(r'(\d+)\s+word', query_lower):
             parsed_filters["word_count"] = int(match.group(1))
         
-        # Detect length constraints
         if match := re.search(r'longer than (\d+)', query_lower):
             parsed_filters["min_length"] = int(match.group(1)) + 1
         if match := re.search(r'shorter than (\d+)', query_lower):
             parsed_filters["max_length"] = int(match.group(1)) - 1
         
-        # Detect specific characters
         if match := re.search(r'contain(?:ing|s)?\s+(?:the\s+letter\s+)?([a-z])', query_lower):
             parsed_filters["contains_character"] = match.group(1)
         elif "first vowel" in query_lower:
             parsed_filters["contains_character"] = "a"
         
-        # If no filters parsed, return error
         if not parsed_filters:
             return JSONResponse(
                 content={"message": "Unable to parse natural language query"},
                 status_code=400
             )
         
-        # Apply filters to strings dict
         filtered = []
         for string_data in strings.values():
             props = string_data["properties"]
             value = string_data["value"]
             
-            # Check each filter
             if "is_palindrome" in parsed_filters:
                 if props["is_palindrome"] != parsed_filters["is_palindrome"]:
                     continue
@@ -212,6 +189,33 @@ def get_all_strings_by_nlp(query: str):
             status_code=400
         )    
 
+
+@app.get("/strings/{string_value}")
+def get_string(string_value):
+    if string_value not in strings:
+        return JSONResponse(
+            content={"message": "String does not exist in the system"},
+            status_code=404
+        )
+    
+    return JSONResponse(
+        content=strings[string_value]
+    )
+    
+
 @app.delete("/strings/{string_value}")
-def delete_string():
-    pass
+def delete_string(string_value):
+    if string_value not in strings:
+        return JSONResponse(
+            content={"message": "String does not exist in the system"},
+            status_code=404
+        )
+    
+    strings.pop(string_value)
+    
+    return Response(
+        status_code=204,
+        headers={
+            "Content-Type":"application/json"
+        }
+    )
